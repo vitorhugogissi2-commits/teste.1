@@ -1,0 +1,50 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helpers -----------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // O admin e definido por um custom claim (role == 'admin').
+    // Ver deploy/README: scripts/setAdmin.mjs atribui esse claim.
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
+
+    function ownsUser() {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Catalogo: leitura publica (loja), escrita apenas admin.
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Pedidos: o cliente le/escreve os seus; o admin le e atualiza todos.
+    match /orders/{orderId} {
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // Perfis de utilizador.
+    match /users/{userId} {
+      allow read: if ownsUser() || isAdmin();
+      allow create, update: if ownsUser();
+      allow delete: if isAdmin();
+    }
+  }
+}
